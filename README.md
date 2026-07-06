@@ -1,8 +1,8 @@
 # shorty
 
-> **Status:** 🚧 In active development (Phase 1 — walking skeleton)
+> **Status:** In active development (Phase 1 — walking skeleton)
 
-A URL shortener service written in **Go**. REST API with caching and rate limiting (roadmap below).
+A URL shortener service written in **Go**. REST API with caching and rate limiting.
 
 ## What it does
 

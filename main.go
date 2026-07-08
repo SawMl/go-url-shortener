@@ -1,6 +1,6 @@
 // Command shorty is a minimal URL shortener.
 //
-// Phase 1 (walking skeleton): in-memory storage only. No database or cache yet.
+// Phase 2: Postgres persistence with interface abstraction.
 // Endpoints:
 //
 //	POST /shorten  body: {"url":"https://example.com/long"}  -> {"code":"1","short":"http://host/1"}
@@ -8,52 +8,112 @@
 package main
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
+
+	_ "github.com/lib/pq"
 )
 
 const base62 = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
-// store is a tiny in-memory URL store. Phase 2 replaces this with Postgres.
-type store struct {
+// Store defines the interface for URL storage backends.
+type Store interface {
+	Save(url string) (string, error)
+	Lookup(code string) (string, bool, error)
+}
+
+// memoryStore is a tiny in-memory URL store. Useful for testing and local development.
+type memoryStore struct {
 	mu      sync.Mutex
 	counter uint64
 	urls    map[string]string
 }
 
-func newStore() *store {
-	return &store{urls: make(map[string]string)}
+func newMemoryStore() *memoryStore {
+	return &memoryStore{urls: make(map[string]string)}
 }
 
-// save records a URL and returns its newly generated short code.
-func (s *store) save(url string) string {
-
+// Save records a URL and returns its newly generated short code.
+func (s *memoryStore) Save(url string) (string, error) {
 	s.mu.Lock()
-
 	defer s.mu.Unlock()
 
 	s.counter++
-
 	code := encodeBase62(s.counter)
-
 	s.urls[code] = url
 
-	return code
+	return code, nil
 }
 
-// lookup returns the URL for a code and whether it existed.
-func (s *store) lookup(code string) (string, bool) {
-
+// Lookup returns the URL for a code and whether it existed.
+func (s *memoryStore) Lookup(code string) (string, bool, error) {
 	s.mu.Lock()
-
 	defer s.mu.Unlock()
 
 	url, ok := s.urls[code]
+	return url, ok, nil
+}
 
-	return url, ok
+// postgresStore persists URLs to a Postgres database.
+type postgresStore struct {
+	db *sql.DB
+}
+
+func newPostgresStore(db *sql.DB) *postgresStore {
+	return &postgresStore{db: db}
+}
+
+// Save records a URL and returns its newly generated short code.
+func (s *postgresStore) Save(url string) (string, error) {
+	var id uint64
+	var code string
+	err := s.db.QueryRowContext(
+		context.Background(),
+		"INSERT INTO urls (url) VALUES ($1) RETURNING id",
+		url,
+	).Scan(&id)
+	if err != nil {
+		return "", err
+	}
+
+	code = encodeBase62(id)
+
+	_, err = s.db.ExecContext(
+		context.Background(),
+		"UPDATE urls SET code = $1 WHERE id = $2",
+		code,
+		id,
+	)
+	if err != nil {
+		return "", err
+	}
+
+	return code, nil
+}
+
+// Lookup returns the URL for a code and whether it existed.
+func (s *postgresStore) Lookup(code string) (string, bool, error) {
+	var url string
+	err := s.db.QueryRowContext(
+		context.Background(),
+		"SELECT url FROM urls WHERE code = $1",
+		code,
+	).Scan(&url)
+
+	if err == sql.ErrNoRows {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+
+	return url, true, nil
 }
 
 // encodeBase62 converts a positive integer to a base62 string.
@@ -90,8 +150,47 @@ type shortenResponse struct {
 	Short string `json:"short"`
 }
 
+// initDB opens the database connection and runs migrations.
+func initDB(dsn string) (*sql.DB, error) {
+	db, err := sql.Open("postgres", dsn)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := db.Ping(); err != nil {
+		return nil, err
+	}
+
+	// Create urls table if it doesn't exist.
+	if _, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS urls (
+			id BIGSERIAL PRIMARY KEY,
+			code VARCHAR(32) UNIQUE,
+			url TEXT NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+	`); err != nil {
+		return nil, err
+	}
+
+	return db, nil
+}
+
 func main() {
-	s := newStore()
+	var store Store
+
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL == "" {
+		log.Println("DATABASE_URL not set; using in-memory store")
+		store = newMemoryStore()
+	} else {
+		db, err := initDB(dbURL)
+		if err != nil {
+			log.Fatalf("failed to initialize database: %v", err)
+		}
+		defer db.Close()
+		store = newPostgresStore(db)
+	}
 
 	mux := http.NewServeMux()
 
@@ -105,7 +204,12 @@ func main() {
 			http.Error(w, "url must start with http:// or https://", http.StatusBadRequest)
 			return
 		}
-		code := s.save(req.URL)
+		code, err := store.Save(req.URL)
+		if err != nil {
+			log.Printf("save error: %v", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(shortenResponse{
 			Code:  code,
@@ -116,7 +220,12 @@ func main() {
 	// {code} is a path parameter supported by Go's newer ServeMux patterns.
 	mux.HandleFunc("GET /{code}", func(w http.ResponseWriter, r *http.Request) {
 		code := r.PathValue("code")
-		url, ok := s.lookup(code)
+		url, ok, err := store.Lookup(code)
+		if err != nil {
+			log.Printf("lookup error: %v", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
 		if !ok {
 			http.Error(w, "not found", http.StatusNotFound)
 			return

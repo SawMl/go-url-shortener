@@ -1,4 +1,4 @@
-// Tests for the in-memory store and base62 encoding (Phase 1).
+// Tests for the in-memory store and base62 encoding (Phase 2).
 package main
 
 import "testing"
@@ -17,27 +17,43 @@ func TestEncodeBase62(t *testing.T) {
 	}
 }
 
-func TestStoreSaveAndLookup(t *testing.T) {
-	s := newStore()
-	code := s.save("https://example.com")
+func TestMemoryStoreSaveAndLookup(t *testing.T) {
+	s := newMemoryStore()
+	code, err := s.Save("https://example.com")
+	if err != nil {
+		t.Fatalf("Save() returned error: %v", err)
+	}
 
-	got, ok := s.lookup(code)
+	got, ok, err := s.Lookup(code)
+	if err != nil {
+		t.Fatalf("Lookup() returned error: %v", err)
+	}
 	if !ok {
-		t.Fatalf("lookup(%q) returned ok=false, want true", code)
+		t.Fatalf("Lookup(%q) returned ok=false, want true", code)
 	}
 	if got != "https://example.com" {
-		t.Errorf("lookup(%q) = %q, want %q", code, got, "https://example.com")
+		t.Errorf("Lookup(%q) = %q, want %q", code, got, "https://example.com")
 	}
 
-	if _, ok := s.lookup("does-not-exist"); ok {
-		t.Error("lookup of unknown code returned ok=true, want false")
+	_, ok, err = s.Lookup("does-not-exist")
+	if err != nil {
+		t.Fatalf("Lookup() returned error: %v", err)
+	}
+	if ok {
+		t.Error("Lookup of unknown code returned ok=true, want false")
 	}
 }
 
-func TestStoreCodesAreUnique(t *testing.T) {
-	s := newStore()
-	a := s.save("https://a.com")
-	b := s.save("https://b.com")
+func TestMemoryStoreCodesAreUnique(t *testing.T) {
+	s := newMemoryStore()
+	a, err := s.Save("https://a.com")
+	if err != nil {
+		t.Fatalf("Save() returned error: %v", err)
+	}
+	b, err := s.Save("https://b.com")
+	if err != nil {
+		t.Fatalf("Save() returned error: %v", err)
+	}
 	if a == b {
 		t.Errorf("expected unique codes, got %q twice", a)
 	}

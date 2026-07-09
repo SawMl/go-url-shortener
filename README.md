@@ -25,11 +25,18 @@ go run .
 
 ### With Postgres
 
-```sh
-# Install Postgres (or use Docker)
-docker run -d -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:latest
+**Option 1: Using docker-compose (recommended)**
 
-# Set the connection string and run
+```sh
+docker-compose up -d
+export DATABASE_URL="postgres://postgres:postgres@localhost:5432/shorty?sslmode=disable"
+go run .
+```
+
+**Option 2: Manual Docker**
+
+```sh
+docker run -d -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:latest
 export DATABASE_URL="postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"
 go run .
 ```

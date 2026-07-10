@@ -59,6 +59,15 @@ curl -iL localhost:8080/1
 go test ./...
 ```
 
+## CI/CD
+
+GitHub Actions automatically runs on every push:
+- **Tests** — `go test ./...`
+- **Vet** — `go vet ./...` (code quality checks)
+- **Fmt** — `gofmt` (code formatting)
+
+View results in the [Actions](https://github.com/SawMl/go-url-shortener/actions) tab.
+
 ## Architecture (current)
 
 ```
@@ -87,9 +96,10 @@ The `Store` interface allows swapping backends without changing handlers.
 
 - [x] **Phase 1** — In-memory shorten + redirect, base62 codes, unit tests
 - [x] **Phase 2** — Postgres persistence, Store interface, migrations, input validation
-- [ ] **Phase 3** — Redis caching, per-IP rate limiting, hit metrics
-- [ ] **Phase 4** — GitHub Actions CI, Dockerfile, load-test benchmark
-- [ ] **Phase 5** — Deploy to public URL, architecture writeup
+- [x] **Phase 3** — GitHub Actions CI (auto-test, vet, fmt on push)
+- [ ] **Phase 4** — Input validation hardening, Dockerfile
+- [ ] **Phase 5** — Redis caching, per-IP rate limiting, hit metrics
+- [ ] **Phase 6** — Load-test benchmark, deployment
 
 ## Tech stack
 

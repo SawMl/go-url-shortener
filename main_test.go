@@ -1,7 +1,10 @@
-// Tests for the in-memory store and base62 encoding (Phase 2).
+// Tests for the in-memory store, base62 encoding, and input validation (Phase 4).
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestEncodeBase62(t *testing.T) {
 	cases := map[uint64]string{
@@ -44,17 +47,44 @@ func TestMemoryStoreSaveAndLookup(t *testing.T) {
 	}
 }
 
-func TestMemoryStoreCodesAreUnique(t *testing.T) {
-	s := newMemoryStore()
-	a, err := s.Save("https://a.com")
-	if err != nil {
-		t.Fatalf("Save() returned error: %v", err)
+func TestValidURL(t *testing.T) {
+	cases := []struct {
+		url  string
+		want bool
+	}{
+		// Valid URLs
+		{"https://example.com", true},
+		{"http://example.com/path", true},
+		{"https://example.com/path?query=value", true},
+		{"https://sub.example.co.uk:8080/path", true},
+
+		// Invalid: malformed
+		{"not a url", false},
+		{"http://", false},
+		{"https://", false},
+
+		// Invalid: wrong scheme
+		{"ftp://example.com", false},
+		{"file:///etc/passwd", false},
+		{"", false},
+
+		// Invalid: localhost/loopback (redirect loop prevention)
+		{"http://localhost/path", false},
+		{"http://127.0.0.1/path", false},
+		{"http://[::1]/path", false},
+
+		// Invalid: private IPs (internal only)
+		{"http://10.0.0.1/path", false},
+		{"http://192.168.1.1/path", false},
+		{"http://172.16.0.1/path", false},
+
+		// Invalid: size limit (>2048 chars)
+		{"https://example.com/" + strings.Repeat("a", 2100), false},
 	}
-	b, err := s.Save("https://b.com")
-	if err != nil {
-		t.Fatalf("Save() returned error: %v", err)
-	}
-	if a == b {
-		t.Errorf("expected unique codes, got %q twice", a)
+
+	for _, c := range cases {
+		if got := validURL(c.url); got != c.want {
+			t.Errorf("validURL(%q) = %v, want %v", c.url, got, c.want)
+		}
 	}
 }

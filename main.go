@@ -1,6 +1,6 @@
 // Command shorty is a minimal URL shortener.
 //
-// Phase 2: Postgres persistence with interface abstraction.
+// Phase 4: Postgres persistence with hardened input validation.
 // Endpoints:
 //
 //	POST /shorten  body: {"url":"https://example.com/long"}  -> {"code":"1","short":"http://host/1"}
@@ -12,7 +12,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"log"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -238,7 +240,42 @@ func main() {
 	log.Fatal(http.ListenAndServe(addr, mux))
 }
 
-// validURL is a minimal check; Phase 2 hardens validation.
+// validURL checks whether u is a valid HTTP(S) URL with a reasonable size limit.
+// Rejects: malformed URLs, localhost/loopback, non-absolute URLs, oversized URLs.
 func validURL(u string) bool {
-	return strings.HasPrefix(u, "http://") || strings.HasPrefix(u, "https://")
+	// Size limit: 2048 characters (most browsers support 2000+)
+	const maxURLLength = 2048
+	if len(u) == 0 || len(u) > maxURLLength {
+		return false
+	}
+
+	// Parse as URL to validate structure.
+	parsed, err := url.Parse(u)
+	if err != nil {
+		return false
+	}
+
+	// Must be http or https
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return false
+	}
+
+	// Must have a host
+	if parsed.Host == "" {
+		return false
+	}
+
+	// Reject localhost, 127.0.0.1, etc. (prevent redirect loops to self)
+	host := parsed.Hostname()
+	if host == "localhost" || host == "127.0.0.1" || host == "::1" {
+		return false
+	}
+
+	// Reject private IP ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16)
+	ip := net.ParseIP(host)
+	if ip != nil && ip.IsPrivate() {
+		return false
+	}
+
+	return true
 }

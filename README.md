@@ -59,6 +59,19 @@ curl -iL localhost:8080/1
 go test ./...
 ```
 
+## Input Validation
+
+The `/shorten` endpoint validates URLs before storing:
+
+- **Scheme:** Must be `http://` or `https://` only
+- **Structure:** Valid URL format (parsed by `net/url.Parse`)
+- **Host:** Must have a hostname, not just a scheme
+- **Size:** Max 2048 characters (DOS prevention)
+- **Localhost prevention:** Rejects `localhost`, `127.0.0.1`, `::1` (redirect loop prevention)
+- **Private IPs:** Rejects `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16` (internal-only IPs)
+
+Invalid URLs return `400 Bad Request`.
+
 ## CI/CD
 
 GitHub Actions automatically runs on every push:
@@ -97,9 +110,10 @@ The `Store` interface allows swapping backends without changing handlers.
 - [x] **Phase 1** — In-memory shorten + redirect, base62 codes, unit tests
 - [x] **Phase 2** — Postgres persistence, Store interface, migrations, input validation
 - [x] **Phase 3** — GitHub Actions CI (auto-test, vet, fmt on push)
-- [ ] **Phase 4** — Input validation hardening, Dockerfile
-- [ ] **Phase 5** — Redis caching, per-IP rate limiting, hit metrics
-- [ ] **Phase 6** — Load-test benchmark, deployment
+- [x] **Phase 4** — Input validation hardening, comprehensive tests
+- [ ] **Phase 5** — Dockerfile (containerize shorty itself)
+- [ ] **Phase 6** — Redis caching, per-IP rate limiting, hit metrics
+- [ ] **Phase 7** — Load-test benchmark, deployment
 
 ## Tech stack
 

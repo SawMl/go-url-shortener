@@ -43,6 +43,24 @@ go run .
 
 The database table is created automatically on startup.
 
+### Fully containerized (shorty + Postgres)
+
+Build and run the entire stack — no local Go toolchain required:
+
+```sh
+docker-compose up --build
+```
+
+This builds the `shorty` image from the [Dockerfile](Dockerfile), starts Postgres,
+waits for it to be healthy, then launches shorty wired to the database.
+The API is available at `http://localhost:8080`.
+
+To build the image on its own:
+
+```sh
+docker build -t shorty .
+```
+
 Then in another terminal:
 
 ```sh
@@ -111,7 +129,7 @@ The `Store` interface allows swapping backends without changing handlers.
 - [x] **Phase 2** — Postgres persistence, Store interface, migrations, input validation
 - [x] **Phase 3** — GitHub Actions CI (auto-test, vet, fmt on push)
 - [x] **Phase 4** — Input validation hardening, comprehensive tests
-- [ ] **Phase 5** — Dockerfile (containerize shorty itself)
+- [x] **Phase 5** — Dockerfile (containerize shorty itself), full docker-compose stack
 - [ ] **Phase 6** — Redis caching, per-IP rate limiting, hit metrics
 - [ ] **Phase 7** — Load-test benchmark, deployment
 
